@@ -52,16 +52,16 @@ def Data_representation(df):
 
 def inverted_index(df):
     # convert the 'new_text' column to string dtype
-    df['new_text'] = df['new_text'].head(10000).astype(str)
+    df['new_text'] = df['new_text'].astype(str)
 
     # initialize the vectorizer
     vectorizer = CountVectorizer()
 
     # fit the vectorizer on the data
-    vectorizer.fit(df['new_text'].head(10000))
+    vectorizer.fit(df['new_text'])
 
     # create the term-document matrix
-    tf = vectorizer.transform(df['new_text'].head(10000))
+    tf = vectorizer.transform(df['new_text'])
 
     # convert the term-document matrix into an inverted index
     terms = vectorizer.get_feature_names_out()
@@ -164,9 +164,9 @@ def resaults(i_df , q_df , df , my_query):
     for word in list:
         matching_qids = temp(word , i_df , matching_qids)
         for qid in matching_qids:
-            res.append({'docid':qid, 'doc': df.loc[qid, 'text'] })
+            res.append({'qid':qid, 'doc': df.loc[qid, 'text'] })
 
-    res_df = pd.DataFrame(res, columns=['docid', 'doc' ])
+    res_df = pd.DataFrame(res, columns=['qid', 'doc' ])
     return res_df
 
 def qrel_res(i):
@@ -183,7 +183,15 @@ def qrel_res(i):
 
     qrel_df = pd.DataFrame(qrel_data, columns=['qid', 'docid' ,'relevance' ])
     return qrel_df
-        
+  
+def cosine_sim(i_df , qi_df):
+    vectorizer = TfidfVectorizer()
+    doc1 = vectorizer.fit_transform(i_df.head())
+    doc2 = vectorizer.fit_transform(qi_df.head())
+    cosine_sim = cosine_similarity(doc1, doc2)
+    return cosine_sim
+
+
 def evaluation(res_df ,qrel_df ):
     true_labels = []
     predicted_labels = []
@@ -232,6 +240,8 @@ def evaluation(res_df ,qrel_df ):
     return temp_df
 
 # file: app.py
+
+from app import cosine_sim
 from app import qrel_res
 from app import evaluation
 from app import resaults
@@ -271,14 +281,22 @@ import math
 
 
 app = Flask(__name__)
-df3 = None
-     
+df1 = pd.DataFrame()
+i_df = pd.DataFrame()
+
+    
 @app.route('/choice_dataset/<string:i>', methods=['POST'])
 def all_results(i):
+    global df1
+    global i_df
+
     data = []
-    df1 = load_dataset(i)
-    df1 = Data_prepocessing(df1)    
-    i_df = inverted_index(df1)
+    if  df1.empty:
+        df1 = load_dataset(i)
+        df1 = Data_prepocessing(df1.head(1000))   
+        
+    if  i_df.empty:    
+        i_df = inverted_index(df1.head(1000))
     
     body = request.form
     my_query = body['query']
@@ -287,7 +305,8 @@ def all_results(i):
     
     res = resaults(i_df , q_df , df1 , my_query)
     qrel_df =  qrel_res(i)
-    #eval_df = evaluation(res , qrel_df)
+    cos = cosine_sim(i_df , qi_df)
+
     data1 = []
     for index, row in res.iterrows():
         data1.append({row['qid']:str(row['doc'])})
@@ -296,26 +315,31 @@ def all_results(i):
 
 @app.route('/Data_prepocessing/<string:i>')
 def prepocessing(i):
+    global df1
     df1 = load_dataset(i)
-    global df3
-    df3 = Data_prepocessing(df1.head(10))
+    df1 = Data_prepocessing(df1.head(1000))        
+    
     data = []
-    for index, row in df3.iterrows():
+    for index, row in df1.iterrows():
         data.append({row['doc_id']:row['new_text']})
     return jsonify(data)
 
 @app.route('/Data_representation/<string:i>')
 def representation(i):
+    global df1
     df1 = load_dataset(i)
-    df1 = Data_prepocessing(df1.head(100))
-    return jsonify(Data_representation(df1).to_string())
+    df1 = Data_prepocessing(df1)
+    return jsonify(Data_representation(df1.head(1000)).to_string())
 
 @app.route('/inverted_index/<string:i>')
 def inverted(i):
-    df1 =  Data_prepocessing(load_dataset(i).head(100))
-    df4 =inverted_index(df1)
+    global df1
+    global i_df
+    df1 = load_dataset(i)
+    df1 = Data_prepocessing(df1.head(1000))
+    i_df =inverted_index(df1.head(1000))
     data1 = []
-    for index, row in df4.iterrows():
+    for index, row in i_df.iterrows():
         data1.append({row['term']:str(row['doc_ids'])})
     return jsonify(data1)
 
@@ -346,7 +370,7 @@ def query_index(i):
 
 @app.route('/')
 def hello():
-    return "Hello, dddddddddddddd!"
+    return "Hello, !"
 
 if __name__ == '__main__':
     app.run(host='192.168.1.106', port=8080)
